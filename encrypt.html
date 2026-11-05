@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Content-Security-Policy: connect-src 'none' stops this page from sending
+       data anywhere with fetch/XHR/WebSockets/beacons, and img-src 'self' stops
+       images from leaking data to other sites. Inline scripts are still allowed
+       because the page uses inline event handlers. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Note Encryption Tool</title>
+  
+  <!-- PWA Meta Tags -->
+  <meta name="theme-color" content="#0f172a">
+  <meta name="description" content="Encrypt and decrypt notes securely in your browser">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Encrypt Note">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    .container { max-width: 32rem; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    h1:focus { outline: none; }
+    .subtitle { color: #cbd5e1; font-size: 0.875rem; margin-bottom: 1.5rem; }
+    .subtitle:focus { outline: 2px solid #10b981; outline-offset: 2px; border-radius: 0.25rem; }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; align-items: center; }
+    .tabs-label { font-size: 0.875rem; color: #cbd5e1; margin-right: 0.25rem; }
+    .tab {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .tab.active { background: #10b981; color: white; }
+    .tab:not(.active) { background: #334155; color: #cbd5e1; }
+    .tab:not(.active):hover { background: #475569; }
+    .field { margin-bottom: 1rem; }
+    label { display: block; font-size: 0.875rem; margin-bottom: 0.25rem; }
+    textarea, input[type="password"], input[type="text"] {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      background: #1e293b;
+      border: 1px solid #475569;
+      border-radius: 0.5rem;
+      color: #e2e8f0;
+      font-size: 1rem;
+      font-family: inherit;
+    }
+    textarea:focus, input:focus { outline: 2px solid #10b981; outline-offset: 2px; border-color: #10b981; }
+    button:focus { outline: 2px solid #10b981; outline-offset: 2px; }
+    textarea { resize: none; height: 8rem; }
+    .char-count { font-size: 0.75rem; color: #94a3b8; margin-top: 0.25rem; }
+    .strength-bar { display: flex; gap: 0.25rem; margin-top: 0.5rem; }
+    .strength-segment { height: 4px; flex: 1; border-radius: 2px; background: #334155; }
+    .strength-segment.filled.red { background: #ef4444; }
+    .strength-segment.filled.yellow { background: #eab308; }
+    .strength-segment.filled.green { background: #10b981; }
+    .strength-label { font-size: 0.75rem; margin-top: 0.25rem; }
+    .strength-label.red { color: #fca5a5; }
+    .strength-label.yellow { color: #fde047; }
+    .strength-label.green { color: #6ee7b7; }
+    button.primary {
+      width: 100%;
+      padding: 0.625rem;
+      border: none;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button.primary.encrypt { background: #10b981; color: white; }
+    button.primary.encrypt:hover { background: #34d399; }
+    button.primary.decrypt { background: #3b82f6; color: white; }
+    button.primary.decrypt:hover { background: #60a5fa; }
+    button.primary:disabled { background: #475569; cursor: wait; }
+    .result {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: #1e293b;
+      border: 1px solid #475569;
+      border-radius: 0.5rem;
+    }
+    .result:focus { outline: 2px solid #10b981; outline-offset: 2px; }
+    .result.success { border-color: #10b981; }
+    .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .result-title { font-size: 0.875rem; color: #34d399; }
+    .copy-btn {
+      padding: 0.375rem 0.625rem;
+      min-height: 1.75rem;
+      background: #334155;
+      border: none;
+      border-radius: 0.25rem;
+      color: #e2e8f0;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: #475569; }
+    .url-display {
+      font-family: ui-monospace, monospace;
+      font-size: 0.75rem;
+      background: #0f172a;
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+      word-break: break-all;
+      color: #e2e8f0;
+    }
+    .url-display:focus { outline: 2px solid #10b981; outline-offset: 2px; }
+    .result-note { font-size: 0.75rem; color: #94a3b8; margin-top: 0.5rem; }
+    .result-note:focus { outline: 2px solid #10b981; outline-offset: 2px; border-radius: 0.25rem; }
+    .url-warning { color: #fde047; font-size: 0.8rem; }
+    .decrypted-text { white-space: pre-wrap; color: #f1f5f9; }
+    .secure-area {
+      margin-top: 1rem;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      border: 1px solid #10b981;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+    }
+    .secure-area:focus { outline: 2px solid #10b981; outline-offset: 2px; }
+    .secure-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0.75rem;
+      background: rgba(16, 185, 129, 0.15);
+      border-bottom: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .secure-header.encrypted {
+      background: rgba(59, 130, 246, 0.15);
+      border-bottom: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .secure-area.encrypted-area {
+      border-color: #3b82f6;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%);
+    }
+    .secure-area.encrypted-area:focus { outline-color: #3b82f6; }
+    .secure-header.encrypted .secure-title {
+      color: #60a5fa;
+    }
+    .secure-title {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #34d399;
+    }
+    .secure-content {
+      padding: 0.75rem;
+      white-space: pre-wrap;
+      color: #f1f5f9;
+      font-family: ui-monospace, monospace;
+      font-size: 0.875rem;
+      max-height: 12rem;
+      overflow-y: auto;
+    }
+    .secure-content:focus { outline: 2px solid #10b981; outline-offset: -2px; }
+    /* Decrypted note is blurred until the user chooses to show it */
+    .secure-content.concealed {
+      filter: blur(0.5rem);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .secure-buttons { display: flex; gap: 0.5rem; }
+    .error {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      background: rgba(127, 29, 29, 0.5);
+      border: 1px solid #b91c1c;
+      border-radius: 0.5rem;
+      color: #fca5a5;
+      font-size: 0.875rem;
+    }
+    .error:focus { outline: 2px solid #fca5a5; outline-offset: 2px; }
+    .info-box {
+      margin-top: 2rem;
+      padding: 1rem;
+      background: rgba(30, 41, 59, 0.5);
+      border-radius: 0.5rem;
+      font-size: 0.75rem;
+      color: #cbd5e1;
+    }
+    .info-box:focus { outline: 2px solid #10b981; outline-offset: 2px; }
+    .info-box strong { display: block; margin-bottom: 0.5rem; }
+    .info-box ul { margin-left: 1rem; }
+    .info-box li { margin-bottom: 0.25rem; }
+    .hidden { display: none; }
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .password-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .password-row input { flex: 1; }
+    .eye-btn {
+      padding: 0.5rem;
+      background: #334155;
+      border: 1px solid #475569;
+      border-radius: 0.5rem;
+      color: #94a3b8;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .eye-btn:hover { background: #475569; color: #cbd5e1; }
+    .password-match { font-size: 0.75rem; margin-top: 0.25rem; }
+    .password-match.match { color: #6ee7b7; }
+    .password-match.no-match { color: #fca5a5; }
+    .label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; }
+    .label-row label { margin-bottom: 0; }
+    .label-buttons { display: flex; gap: 0.5rem; }
+    .small-btn {
+      padding: 0.25rem 0.5rem;
+      min-height: 1.75rem;
+      min-width: 2.75rem;
+      background: #334155;
+      border: none;
+      border-radius: 0.25rem;
+      color: #cbd5e1;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .small-btn:hover { background: #475569; color: #f1f5f9; }
+    .error-action-row { text-align: center; margin-top: 0.5rem; }
+    .error + .error-action-row { margin-top: 0.5rem; }
+    .error-action {
+      padding: 0.25rem 0.5rem;
+      background: transparent;
+      border: 1px solid #fca5a5;
+      border-radius: 0.25rem;
+      color: #fca5a5;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .error-action:hover { background: rgba(252, 165, 165, 0.1); }
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 0.625rem 1rem;
+      background: #10b981;
+      color: white;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .toast.visible { opacity: 1; }
+    .skip-link {
+      position: absolute;
+      top: -40px;
+      left: 0;
+      background: #10b981;
+      color: white;
+      padding: 0.5rem 1rem;
+      z-index: 100;
+      text-decoration: none;
+      border-radius: 0 0 0.5rem 0;
+    }
+    .skip-link:focus { top: 0; }
+  </style>
+</head>
+<body>
+  <a href="#page-title" class="skip-link" onkeydown="if(event.key===' '){this.click();event.preventDefault();}">Skip to main content</a>
+  <div class="container" role="main">
+    <h1 id="page-title" tabindex="-1"><span aria-hidden="true">🔐 </span>Note Encryption Tool</h1>
+    <p class="subtitle" tabindex="0">Encrypt a short note with a password. Everything happens in your browser - nothing is ever sent anywhere.</p>
+
+    <div class="tabs" role="tablist" aria-label="Mode selection">
+      <span class="tabs-label" id="mode-label">Mode:</span>
+      <button class="tab active" id="tab-encrypt" role="tab" aria-selected="true" aria-controls="panel-encrypt" onclick="switchTab('encrypt')">Encrypt</button>
+      <button class="tab" id="tab-decrypt" role="tab" aria-selected="false" aria-controls="panel-decrypt" onclick="switchTab('decrypt')">Decrypt</button>
+    </div>
+
+    <!-- Encrypt Panel - fields injected by JS -->
+    <div id="panel-encrypt" role="tabpanel" aria-labelledby="tab-encrypt"></div>
+
+    <!-- Decrypt Panel - fields injected by JS -->
+    <div id="panel-decrypt" class="hidden" role="tabpanel" aria-labelledby="tab-decrypt"></div>
+
+    <div class="error hidden" id="error" role="alert"></div>
+    <div class="error-action-row hidden" id="error-action-container"></div>
+    <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+    <div id="status-announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+
+    <div class="info-box" tabindex="0" role="note" aria-label="How it works: Uses PBKDF2-SHA512 with 600,000 iterations to derive a key from your password. Notes made with the original version, at 200,000 iterations, can still be decrypted. SHA-512 is harder for GPUs to crack than SHA-256. Encrypts with AES-256-GCM which includes integrity check. Pads notes to a multiple of 256 bytes so the encrypted length does not reveal the note's length. Stores a version byte, salt, IV, and ciphertext in URL-safe base64. Decrypted notes stay blurred until you choose to show them, and are hidden again after 30 seconds or when you switch away. After 5 minutes without activity, passwords and notes are cleared from the page. Everything happens in your browser - nothing is ever sent anywhere.">
+      <strong id="how-it-works-title" aria-hidden="true">How it works:</strong>
+      <ul aria-hidden="true">
+        <li>Uses PBKDF2-SHA512 (600k iterations) to derive a key from your password; notes from the original version (200k) still decrypt</li>
+        <li>SHA-512 is harder for GPUs to crack than SHA-256</li>
+        <li>Encrypts with AES-256-GCM (includes integrity check)</li>
+        <li>Pads notes to a multiple of 256 bytes so the encrypted length doesn't reveal the note's length</li>
+        <li>Stores version + salt + IV + ciphertext in URL-safe base64</li>
+        <li>Decrypted notes stay blurred until you show them, and hide again after 30 seconds or when you switch away</li>
+        <li>After 5 minutes without activity, passwords and notes are cleared from the page</li>
+        <li>Everything happens in your browser - nothing is ever sent anywhere</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    // State for restore functionality
+    let savedNote = null;
+    let passwordVerified = false;
+
+    // Generate form fields dynamically to prevent browser tab restore
+    function initForms() {
+      // Encrypt panel
+      document.getElementById('panel-encrypt').innerHTML = `
+        <div class="field">
+          <div class="label-row">
+            <label for="note">Your Note</label>
+            <div class="label-buttons">
+              <button type="button" class="small-btn hidden" id="btn-restore" onclick="restoreNote()" aria-label="Restore previous note">Restore</button>
+              <button type="button" class="small-btn" id="btn-clear" onclick="clearNote()" aria-label="Clear note">Clear</button>
+            </div>
+          </div>
+          <textarea id="note" placeholder="Enter your secret note..." oninput="updateCharCount()" aria-describedby="char-count-desc"></textarea>
+          <div class="char-count" id="char-count-desc"><span id="char-count">0</span> characters</div>
+        </div>
+        <div class="field" id="password-field">
+          <label for="password-encrypt">Password</label>
+          <div class="password-row">
+            <button type="button" class="eye-btn" id="toggle-visibility" onclick="togglePasswordVisibility()" aria-label="Show password">
+              <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              <svg id="eye-off-icon" class="hidden" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+            <input type="password" id="password-encrypt" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore placeholder="Enter a strong password" oninput="updateStrength()" aria-describedby="strength-label" onkeydown="if(event.key==='Enter'){encrypt();event.preventDefault();}">
+          </div>
+          <div id="confirm-field">
+            <input type="password" id="password-confirm" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore placeholder="Confirm password" oninput="checkMatch()" style="margin-top: 0.5rem;" aria-describedby="password-match" onkeydown="if(event.key==='Enter'){encrypt();event.preventDefault();}">
+            <div class="password-match" id="password-match" aria-live="polite"></div>
+          </div>
+          <div class="strength-bar" id="strength-bar" role="img" aria-hidden="true"></div>
+          <div class="strength-label" id="strength-label" aria-live="polite"></div>
+        </div>
+        <button class="primary encrypt" id="btn-encrypt" onclick="encrypt()">Encrypt &amp; Generate URL</button>
+        <div class="result hidden" id="encrypt-result" tabindex="0" role="region" aria-labelledby="url-result-title">
+          <div class="result-header">
+            <span class="result-title" id="url-result-title">Generated URL:</span>
+            <div id="url-buttons">
+              <button class="copy-btn" onclick="openUrl()" style="margin-right: 0.5rem;" aria-label="Open URL in new tab">Open</button>
+              <button class="copy-btn" onclick="copyUrl(event)" aria-label="Copy URL to clipboard">Copy</button>
+            </div>
+          </div>
+          <div class="url-display" id="generated-url" tabindex="0" role="textbox" aria-readonly="true" aria-label="Generated URL"></div>
+          <div class="result-note" id="url-result-note" tabindex="0">Share this URL + password separately. The # fragment is never sent to servers.</div>
+        </div>
+        <div class="secure-area encrypted-area hidden" id="encrypted-content-area" tabindex="0" role="region" aria-labelledby="encrypted-content-title">
+          <div class="secure-header encrypted">
+            <span class="secure-title" id="encrypted-content-title"><span aria-hidden="true">🔒 </span>Encrypted Content</span>
+            <button class="copy-btn" onclick="copyEncrypted(event)" aria-label="Copy encrypted content to clipboard">Copy</button>
+          </div>
+          <div class="secure-content" id="encrypted-content" tabindex="0" role="textbox" aria-readonly="true" aria-labelledby="encrypted-content-title"></div>
+        </div>
+      `;
+
+      // Decrypt panel
+      document.getElementById('panel-decrypt').innerHTML = `
+        <div class="field">
+          <label for="encrypted-data">Encrypted Data or URL</label>
+          <textarea id="encrypted-data" placeholder="Paste the URL or encrypted string..." style="height: 6rem; font-family: ui-monospace, monospace; font-size: 0.875rem;"></textarea>
+        </div>
+        <div class="field">
+          <label for="password-decrypt">Password</label>
+          <input type="password" id="password-decrypt" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore placeholder="Enter the password" onkeydown="if(event.key==='Enter'){decrypt();event.preventDefault();}">
+        </div>
+        <button class="primary decrypt" id="btn-decrypt" onclick="decrypt()">Decrypt Note</button>
+        <div class="secure-area hidden" id="decrypt-result" tabindex="0" role="region" aria-labelledby="decrypted-text-title">
+          <div class="secure-header">
+            <span class="secure-title" id="decrypted-text-title"><span aria-hidden="true">🔓 </span>Decrypted Note</span>
+            <div class="secure-buttons">
+              <button class="copy-btn" id="btn-reveal" onclick="toggleReveal()" aria-label="Show decrypted note" aria-controls="decrypted-text" aria-pressed="false">Show</button>
+              <button class="copy-btn" onclick="copyDecrypted(event)" aria-label="Copy decrypted note to clipboard">Copy</button>
+            </div>
+          </div>
+          <div class="secure-content concealed" id="decrypted-text" tabindex="0" role="textbox" aria-readonly="true" aria-labelledby="decrypted-text-title"></div>
+        </div>
+      `;
+    }
+
+    // Initialize on load, then check for hash
+    window.addEventListener('DOMContentLoaded', () => {
+      initForms();
+      
+      const hash = window.location.hash.slice(1);
+      // Only treat as encrypted data if it looks like base64 (not element IDs like "page-title")
+      if (hash && hash.length > 20 && /^[A-Za-z0-9_-]+$/.test(hash)) {
+        document.getElementById('encrypted-data').value = hash;
+        switchTab('decrypt', false); // Don't announce yet
+        // Update titles and subtitle for decrypt mode
+        document.title = 'Note Encryption Tool - Decrypt Mode';
+        document.getElementById('page-title').innerHTML = '<span aria-hidden="true">🔐 </span>Note Encryption Tool - Decrypt Mode';
+        document.querySelector('.subtitle').textContent = 'Decrypt an encrypted note with the password. Everything happens in your browser - nothing is ever sent anywhere.';
+        // Focus password field after short delay for screen reader
+        setTimeout(() => {
+          document.getElementById('password-decrypt').focus();
+          announceStatus('Decrypt mode. Encrypted data loaded. Enter password to decrypt.');
+        }, 200);
+      }
+    });
+
+    function switchTab(tab, announce = true) {
+      document.getElementById('tab-encrypt').classList.toggle('active', tab === 'encrypt');
+      document.getElementById('tab-decrypt').classList.toggle('active', tab === 'decrypt');
+      document.getElementById('tab-encrypt').setAttribute('aria-selected', tab === 'encrypt');
+      document.getElementById('tab-decrypt').setAttribute('aria-selected', tab === 'decrypt');
+      document.getElementById('panel-encrypt').classList.toggle('hidden', tab !== 'encrypt');
+      document.getElementById('panel-decrypt').classList.toggle('hidden', tab !== 'decrypt');
+      hideError();
+      
+      // Update titles and subtitle to reflect current mode
+      const title = document.getElementById('page-title');
+      const subtitle = document.querySelector('.subtitle');
+      if (tab === 'decrypt') {
+        document.title = 'Note Encryption Tool - Decrypt Mode';
+        title.innerHTML = '<span aria-hidden="true">🔐 </span>Note Encryption Tool - Decrypt Mode';
+        subtitle.textContent = 'Decrypt an encrypted note with the password. Everything happens in your browser - nothing is ever sent anywhere.';
+        if (announce) announceStatus('Switched to decrypt mode');
+      } else {
+        document.title = 'Note Encryption Tool';
+        title.innerHTML = '<span aria-hidden="true">🔐 </span>Note Encryption Tool';
+        subtitle.textContent = 'Encrypt a short note with a password. Everything happens in your browser - nothing is ever sent anywhere.';
+        if (announce) announceStatus('Switched to encrypt mode');
+      }
+    }
+
+    function updateCharCount() {
+      const count = document.getElementById('note').value.length;
+      document.getElementById('char-count').textContent = count;
+    }
+
+    // ---- Password strength estimate ----
+    // A rough estimate of how many guesses an attacker needs, in bits.
+    // Counting character types alone rates "Password123!" as strong, so this
+    // also gives little credit for common passwords and words (including
+    // l33t spellings), keyboard runs, sequences, repeats and years.
+    const COMMON_WORDS = [
+      'password', 'passwort', 'qwerty', 'azerty', 'letmein', 'welcome', 'admin',
+      'iloveyou', 'monkey', 'dragon', 'football', 'baseball', 'soccer', 'hockey',
+      'sunshine', 'princess', 'master', 'shadow', 'superman', 'batman', 'trustno',
+      'login', 'starwars', 'hello', 'freedom', 'whatever', 'michael', 'jordan',
+      'summer', 'winter', 'spring', 'autumn', 'secret', 'changeme', 'default',
+      'guest', 'root', 'user', 'pass', 'love', 'god', 'money', 'computer',
+      'internet', 'cookie', 'cheese', 'pepper', 'ginger', 'orange', 'banana',
+      'chocolate', 'purple', 'flower', 'tigger', 'charlie', 'thomas', 'jessica',
+      'ashley', 'daniel', 'matthew', 'andrew', 'joshua', 'hunter', 'killer',
+      'mustang', 'harley', 'ranger', 'buster', 'yankees', 'cowboys', 'eagles',
+      'access', 'secure', 'private', 'test', 'demo', 'abc', 'xyz'
+    ];
+    const KEYBOARD_ROWS = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm', 'qwertzuiop', 'azertyuiop'];
+    const LEET = { '0': 'o', '1': 'i', '!': 'i', '3': 'e', '4': 'a', '@': 'a', '5': 's', '$': 's', '7': 't', '8': 'b', '9': 'g' };
+
+    function charPoolSize(pw) {
+      let pool = 0;
+      if (/[a-z]/.test(pw)) pool += 26;
+      if (/[A-Z]/.test(pw)) pool += 26;
+      if (/[0-9]/.test(pw)) pool += 10;
+      if (/[ -/:-@[-`{-~]/.test(pw)) pool += 33;
+      if (/[^\x00-\x7F]/.test(pw)) pool += 100;
+      return Math.max(pool, 10);
+    }
+
+    function estimateBits(pw) {
+      const chars = Array.from(pw);
+      const n = chars.length;
+      const perChar = Math.log2(charPoolSize(pw));
+      // cost[i] = bits credited for character i; start with full credit
+      const cost = new Array(n).fill(perChar);
+      const lower = chars.map(c => c.toLowerCase());
+      const unleet = lower.map(c => LEET[c] || c).join('');
+      const lowerStr = lower.join('');
+
+      // Common words: the whole word is worth about as much as one guess from a list
+      for (const word of COMMON_WORDS) {
+        let from = 0, at;
+        while ((at = unleet.indexOf(word, from)) !== -1) {
+          for (let i = at; i < at + word.length && i < n; i++) cost[i] = 0;
+          cost[at] = Math.max(cost[at], 10);
+          from = at + 1;
+        }
+      }
+      // Years 1900-2099
+      const yearRe = /(19|20)\d\d/g;
+      let m;
+      while ((m = yearRe.exec(lowerStr)) !== null) {
+        for (let i = m.index; i < m.index + 4; i++) cost[i] = 0;
+        cost[m.index] = 7;
+      }
+      // Repeats, sequences (abc, 321) and keyboard runs (qwe, asd): each
+      // character that just continues the pattern adds about 1 bit
+      for (let i = 1; i < n; i++) {
+        const a = lowerStr.codePointAt(i - 1), b = lowerStr.codePointAt(i);
+        const pair = lower[i - 1] + lower[i];
+        const onKeyboard = KEYBOARD_ROWS.some(row => row.includes(pair) || [...row].reverse().join('').includes(pair));
+        if (a === b || Math.abs(a - b) === 1 || onKeyboard) cost[i] = Math.min(cost[i], 1);
+      }
+      return Math.round(cost.reduce((sum, c) => sum + c, 0));
+    }
+
+    const WEAK_BITS = 50;   // below this, encrypting asks for confirmation
+    const STRONG_BITS = 70;
+
+    function getStrength(pw) {
+      if (!pw) return { score: 0, bits: 0, label: '', color: '' };
+      const bits = estimateBits(pw);
+      const score = Math.max(1, Math.min(6, Math.round(bits / 15))); // bar segments
+      const detail = ` (about ${bits} bits)`;
+      if (bits < WEAK_BITS) return { score, bits, label: 'Strength: Weak' + detail, color: 'red' };
+      if (bits < STRONG_BITS) return { score, bits, label: 'Strength: Moderate' + detail, color: 'yellow' };
+      return { score, bits, label: 'Strength: Strong' + detail, color: 'green' };
+    }
+
+    function updateStrength() {
+      const pw = document.getElementById('password-encrypt').value;
+      const pwField = document.getElementById('password-encrypt');
+      const strength = getStrength(pw);
+      const bar = document.getElementById('strength-bar');
+      const label = document.getElementById('strength-label');
+      
+      bar.innerHTML = [1,2,3,4,5,6].map(i => 
+        `<div class="strength-segment ${i <= strength.score ? 'filled ' + strength.color : ''}"></div>`
+      ).join('');
+      
+      label.textContent = strength.label;
+      label.className = 'strength-label ' + strength.color;
+      
+      // If password was verified but user is now changing it in hidden mode, re-require confirmation
+      if (passwordVerified && pwField.type === 'password') {
+        const confirmField = document.getElementById('confirm-field');
+        if (!confirmField) {
+          // Add confirmation field back
+          const confirmDiv = document.createElement('div');
+          confirmDiv.id = 'confirm-field';
+          confirmDiv.innerHTML = `
+            <input type="password" id="password-confirm" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore placeholder="Confirm password" oninput="checkMatch()" style="margin-top: 0.5rem;" aria-describedby="password-match" onkeydown="if(event.key==='Enter'){encrypt();event.preventDefault();}">
+            <div class="password-match" id="password-match" aria-live="polite"></div>
+          `;
+          bar.parentElement.insertBefore(confirmDiv, bar);
+        }
+        passwordVerified = false;
+      }
+      
+      // Also check match if confirm field exists
+      checkMatch();
+    }
+
+    function checkMatch() {
+      const confirmField = document.getElementById('password-confirm');
+      const matchDiv = document.getElementById('password-match');
+      if (!confirmField || !matchDiv) return;
+      
+      const pw = document.getElementById('password-encrypt').value;
+      const confirm = confirmField.value;
+      
+      if (!confirm) {
+        matchDiv.textContent = '';
+        matchDiv.className = 'password-match';
+      } else if (pw === confirm) {
+        matchDiv.textContent = '✓ Passwords match';
+        matchDiv.className = 'password-match match';
+      } else {
+        matchDiv.textContent = '✗ Passwords do not match';
+        matchDiv.className = 'password-match no-match';
+      }
+    }
+
+    function togglePasswordVisibility() {
+      const pwField = document.getElementById('password-encrypt');
+      const confirmFieldWrapper = document.getElementById('confirm-field');
+      const eyeIcon = document.getElementById('eye-icon');
+      const eyeOffIcon = document.getElementById('eye-off-icon');
+      const toggleBtn = document.getElementById('toggle-visibility');
+      
+      if (pwField.type === 'password') {
+        // Switching to visible mode
+        pwField.type = 'text';
+        if (confirmFieldWrapper) {
+          confirmFieldWrapper.remove();
+        }
+        eyeIcon.classList.add('hidden');
+        eyeOffIcon.classList.remove('hidden');
+        toggleBtn.setAttribute('aria-label', 'Hide password');
+        announceStatus('Password is now visible');
+      } else {
+        // Switching to hidden mode - verified since they just saw it
+        pwField.type = 'password';
+        eyeIcon.classList.remove('hidden');
+        eyeOffIcon.classList.add('hidden');
+        toggleBtn.setAttribute('aria-label', 'Show password');
+        passwordVerified = true;
+        announceStatus('Password is now hidden');
+      }
+    }
+
+    function announceStatus(message) {
+      const statusEl = document.getElementById('status-announcer');
+      statusEl.textContent = message;
+      // Clear after announcement so it can be repeated
+      setTimeout(() => statusEl.textContent = '', 1000);
+    }
+
+    function setVerifiedPasswordState() {
+      const pwField = document.getElementById('password-encrypt');
+      const confirmFieldWrapper = document.getElementById('confirm-field');
+      const eyeIcon = document.getElementById('eye-icon');
+      const eyeOffIcon = document.getElementById('eye-off-icon');
+      const toggleBtn = document.getElementById('toggle-visibility');
+      
+      // Convert to single hidden password field
+      pwField.type = 'password';
+      if (confirmFieldWrapper) {
+        confirmFieldWrapper.remove();
+      }
+      eyeIcon.classList.remove('hidden');
+      eyeOffIcon.classList.add('hidden');
+      toggleBtn.setAttribute('aria-label', 'Show password');
+      passwordVerified = true;
+    }
+
+    const RESTORE_SECONDS = 60;
+    let restoreTimer = null;
+
+    function forgetSavedNote() {
+      clearTimeout(restoreTimer);
+      savedNote = null;
+      const btn = document.getElementById('btn-restore');
+      if (btn) btn.classList.add('hidden');
+    }
+
+    function restoreNote() {
+      clearTimeout(restoreTimer);
+      if (savedNote !== null) {
+        document.getElementById('note').value = savedNote;
+        updateCharCount();
+        document.getElementById('btn-restore').classList.add('hidden');
+        savedNote = null;
+        // Move focus to the restored note
+        document.getElementById('note').focus();
+        announceStatus('Note restored');
+      }
+    }
+
+    function clearNote() {
+      document.getElementById('note').value = '';
+      updateCharCount();
+      document.getElementById('note').focus();
+      announceStatus('Note cleared');
+    }
+
+    function showError(msg, actionBtn = null, skipFocus = false) {
+      const el = document.getElementById('error');
+      const actionContainer = document.getElementById('error-action-container');
+      
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      
+      if (actionBtn) {
+        actionContainer.innerHTML = `<button class="error-action" id="error-action-btn" onclick="${actionBtn.onclick}">${actionBtn.label}</button>`;
+        actionContainer.classList.remove('hidden');
+        // Small delay to let alert announce, then focus button
+        setTimeout(() => {
+          // The button may already be gone if it was clicked within 100 ms
+          const actionBtnEl = document.getElementById('error-action-btn');
+          if (actionBtnEl) actionBtnEl.focus();
+        }, 100);
+      } else {
+        actionContainer.classList.add('hidden');
+        actionContainer.innerHTML = '';
+        if (!skipFocus) {
+          el.setAttribute('tabindex', '-1');
+          el.focus();
+        }
+      }
+    }
+
+    function hideError() {
+      document.getElementById('error').classList.add('hidden');
+      document.getElementById('error-action-container').classList.add('hidden');
+      document.getElementById('error-action-container').innerHTML = '';
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('visible'), 10);
+      setTimeout(() => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.classList.add('hidden'), 200);
+      }, 2000);
+    }
+
+    async function deriveKey(password, salt, iterations) {
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(password),
+        'PBKDF2',
+        false,
+        ['deriveKey']
+      );
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations, hash: 'SHA-512' },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
+    }
+
+    // ---- Encrypted format ----
+    // Version 0 (original): salt(16) | iv(12) | AES-GCM(note)
+    //   key: PBKDF2-SHA512, 200,000 iterations, password used exactly as typed
+    // Version 1:            0x01 | salt(16) | iv(12) | AES-GCM(padded note)
+    //   key: PBKDF2-SHA512, 600,000 iterations, password normalized to Unicode NFC
+    //   so accented characters typed on different devices give the same key
+    //   padded note = note length (4 bytes, big-endian) | note bytes | zeros,
+    //   rounded up to a multiple of PAD_BLOCK so the length of the encrypted
+    //   text only reveals which 256-byte size bucket the note falls into.
+    const FORMAT_VERSION = 1;
+    const V0_ITERATIONS = 200000;
+    const V1_ITERATIONS = 600000;
+    const SALT_LEN = 16;
+    const IV_LEN = 12;
+    const TAG_LEN = 16; // AES-GCM authentication tag, appended to the ciphertext
+    const PAD_BLOCK = 256;
+    const LENGTH_PREFIX = 4;
+
+    function padNote(noteBytes) {
+      const paddedLen = Math.ceil((LENGTH_PREFIX + noteBytes.length) / PAD_BLOCK) * PAD_BLOCK;
+      const padded = new Uint8Array(paddedLen); // starts as all zeros
+      new DataView(padded.buffer).setUint32(0, noteBytes.length);
+      padded.set(noteBytes, LENGTH_PREFIX);
+      return padded;
+    }
+
+    function unpadNote(padded) {
+      if (padded.length < LENGTH_PREFIX) throw new Error('Padded note too short');
+      const noteLen = new DataView(padded.buffer, padded.byteOffset, padded.byteLength).getUint32(0);
+      if (noteLen > padded.length - LENGTH_PREFIX) throw new Error('Invalid note length');
+      return padded.subarray(LENGTH_PREFIX, LENGTH_PREFIX + noteLen);
+    }
+
+    // Converts in chunks: spreading a large array into String.fromCharCode
+    // exceeds the browser's argument limit and crashes on long notes.
+    function bytesToBase64Url(bytes) {
+      const CHUNK = 0x8000;
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+      }
+      return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function base64UrlToBytes(text) {
+      let base64 = text.replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4) base64 += '=';
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+
+    async function decryptLayout(combined, password, offset, padded, iterations) {
+      const salt = combined.slice(offset, offset + SALT_LEN);
+      const iv = combined.slice(offset + SALT_LEN, offset + SALT_LEN + IV_LEN);
+      const ciphertext = combined.slice(offset + SALT_LEN + IV_LEN);
+      const key = await deriveKey(password, salt, iterations);
+      const plaintext = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext));
+      return padded ? unpadNote(plaintext) : plaintext;
+    }
+
+    // Version 0 strings start with a random salt byte, so about 1 in 256 of
+    // them will happen to start with 0x01. If a string looks like version 1
+    // but fails to decrypt that way, it is retried as version 0. AES-GCM's
+    // integrity check makes a wrong-layout "success" practically impossible.
+    async function decryptAnyVersion(combined, password) {
+      const minV1 = 1 + SALT_LEN + IV_LEN + PAD_BLOCK + TAG_LEN;
+      const minV0 = SALT_LEN + IV_LEN + TAG_LEN;
+      if (combined[0] === FORMAT_VERSION && combined.length >= minV1) {
+        try {
+          return await decryptLayout(combined, password.normalize('NFC'), 1, true, V1_ITERATIONS);
+        } catch (e) {
+          // fall through to version 0
+        }
+      }
+      if (combined.length < minV0) throw new Error('Encrypted data too short');
+      return decryptLayout(combined, password, 0, false, V0_ITERATIONS);
+    }
+
+    async function encrypt(forceWeak = false) {
+      // Encrypt the note exactly as typed: trimming would silently drop
+      // leading/trailing spaces, e.g. from a password that ends with a space
+      const note = document.getElementById('note').value;
+      const password = document.getElementById('password-encrypt').value;
+      const confirmField = document.getElementById('password-confirm');
+      const strength = getStrength(password);
+
+      hideError();
+      document.getElementById('encrypt-result').classList.add('hidden');
+      document.getElementById('encrypted-content-area').classList.add('hidden');
+
+      if (!note.trim() || !password) {
+        showError('Please enter both a note and password', null, true);
+        // Focus the first empty field
+        if (!note.trim()) {
+          document.getElementById('note').focus();
+        } else {
+          document.getElementById('password-encrypt').focus();
+        }
+        return;
+      }
+      
+      // Check password confirmation if not yet verified
+      if (!passwordVerified && confirmField) {
+        const confirm = confirmField.value;
+        if (password !== confirm) {
+          showError('Passwords do not match', null, true);
+          document.getElementById('password-confirm').focus();
+          return;
+        }
+      }
+      
+      if (!forceWeak && strength.bits < WEAK_BITS) {
+        showError('Weak password. Anyone who gets the encrypted text can guess passwords offline, so use a long passphrase, such as 5 or more random words.', {
+          label: 'Encrypt anyway',
+          onclick: 'encrypt(true)'
+        });
+        return;
+      }
+
+      const btn = document.getElementById('btn-encrypt');
+      btn.disabled = true;
+      btn.textContent = 'Encrypting...';
+
+      try {
+        const salt = crypto.getRandomValues(new Uint8Array(SALT_LEN));
+        const iv = crypto.getRandomValues(new Uint8Array(IV_LEN));
+        const key = await deriveKey(password.normalize('NFC'), salt, V1_ITERATIONS);
+
+        const ciphertext = new Uint8Array(await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv },
+          key,
+          padNote(new TextEncoder().encode(note))
+        ));
+
+        const combined = new Uint8Array(1 + SALT_LEN + IV_LEN + ciphertext.length);
+        combined[0] = FORMAT_VERSION;
+        combined.set(salt, 1);
+        combined.set(iv, 1 + SALT_LEN);
+        combined.set(ciphertext, 1 + SALT_LEN + IV_LEN);
+        const base64 = bytesToBase64Url(combined);
+
+        const url = `${window.location.origin}${window.location.pathname}#${base64}`;
+        
+        // Check if URL is too long (2000 chars is safe limit for most browsers)
+        const urlTooLong = url.length > 2000;
+        if (urlTooLong) {
+          document.getElementById('url-result-title').textContent = 'URL Not Available:';
+          document.getElementById('generated-url').innerHTML = `<span class="url-warning">Encrypted URL would be too long. (${url.length} chars &gt; 2000 chars max)<br>Copy the encrypted content below instead or reduce the content of the note.</span>`;
+          document.getElementById('url-buttons').classList.add('hidden');
+          document.getElementById('url-result-note').textContent = 'Paste the encrypted content into the decrypt field along with the password.';
+        } else {
+          document.getElementById('url-result-title').textContent = 'Generated URL:';
+          document.getElementById('generated-url').textContent = url;
+          document.getElementById('url-buttons').classList.remove('hidden');
+          document.getElementById('url-result-note').textContent = 'Share this URL + password separately. The # fragment is never sent to servers.';
+        }
+        document.getElementById('encrypt-result').classList.remove('hidden');
+        
+        // Always show encrypted content
+        document.getElementById('encrypted-content').textContent = base64;
+        document.getElementById('encrypted-content-area').classList.remove('hidden');
+        
+        // Move focus to appropriate result panel for screen readers
+        if (urlTooLong) {
+          document.getElementById('encrypted-content-area').focus();
+          showToast('Encrypted! URL too long - use encrypted content below.');
+        } else {
+          document.getElementById('encrypt-result').focus();
+          showToast('Encrypted! URL generated successfully.');
+        }
+        
+        // Save note for restore, clear the field
+        savedNote = note;
+        document.getElementById('note').value = '';
+        updateCharCount();
+        // The Restore copy of the plaintext expires after RESTORE_SECONDS
+        clearTimeout(restoreTimer);
+        restoreTimer = setTimeout(forgetSavedNote, RESTORE_SECONDS * 1000);
+        
+        // Convert to verified password state (single hidden field)
+        setVerifiedPasswordState();
+        
+        // Show restore button
+        document.getElementById('btn-restore').classList.remove('hidden');
+        
+      } catch (e) {
+        showError('Encryption failed: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Encrypt & Generate URL';
+      }
+    }
+
+    async function decrypt() {
+      let data = document.getElementById('encrypted-data').value.trim();
+      const password = document.getElementById('password-decrypt').value;
+
+      hideError();
+      document.getElementById('decrypt-result').classList.add('hidden');
+
+      // Extract hash from URL if pasted
+      if (data.includes('#')) {
+        data = data.split('#').pop();
+      }
+
+      if (!data || !password) {
+        showError('Please enter both encrypted data and password', null, true);
+        // Focus the first empty field
+        if (!data) {
+          document.getElementById('encrypted-data').focus();
+        } else {
+          document.getElementById('password-decrypt').focus();
+        }
+        return;
+      }
+
+      const btn = document.getElementById('btn-decrypt');
+      btn.disabled = true;
+      btn.textContent = 'Decrypting...';
+
+      try {
+        const combined = base64UrlToBytes(data);
+        const plaintext = await decryptAnyVersion(combined, password);
+
+        concealDecrypted(false);
+        document.getElementById('decrypted-text').textContent = new TextDecoder().decode(plaintext);
+        document.getElementById('decrypt-result').classList.remove('hidden');
+        // Don't leave the password sitting in the field
+        document.getElementById('password-decrypt').value = '';
+        
+        // Move focus to result panel for screen readers
+        document.getElementById('decrypt-result').focus();
+        showToast('Decrypted successfully!');
+      } catch (e) {
+        showError('Decryption failed. Wrong password or corrupted data.', null, true);
+        // Clear and focus password field so user can try again
+        document.getElementById('password-decrypt').value = '';
+        document.getElementById('password-decrypt').focus();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Decrypt Note';
+      }
+    }
+
+    async function copyUrl(e) {
+      const url = document.getElementById('generated-url').textContent;
+      await navigator.clipboard.writeText(url);
+      e.target.textContent = '✓ Copied!';
+      setTimeout(() => e.target.textContent = 'Copy', 2000);
+      showToast('✓ URL copied to clipboard');
+      announceStatus('URL copied to clipboard');
+    }
+
+    // Browsers only let a page write to the clipboard while it has focus, so
+    // the clipboard is cleared after CLIPBOARD_CLEAR_SECONDS if this page is
+    // focused then, or else as soon as you come back to it. A page cannot
+    // remove the copy from clipboard history (Windows Win+V, phone keyboards).
+    const CLIPBOARD_CLEAR_SECONDS = 30;
+    let clipboardClearTimer = null;
+    let clipboardClearPending = false;
+
+    async function clearClipboardNow() {
+      clipboardClearPending = false;
+      try {
+        await navigator.clipboard.writeText('');
+        showToast('Clipboard cleared');
+        announceStatus('Clipboard cleared');
+      } catch (e) {
+        // Not focused after all: try again when the page regains focus
+        clipboardClearPending = true;
+      }
+    }
+
+    function scheduleClipboardClear() {
+      clearTimeout(clipboardClearTimer);
+      clipboardClearPending = false;
+      clipboardClearTimer = setTimeout(() => {
+        if (document.hasFocus()) {
+          clearClipboardNow();
+        } else {
+          clipboardClearPending = true;
+        }
+      }, CLIPBOARD_CLEAR_SECONDS * 1000);
+    }
+
+    window.addEventListener('focus', () => {
+      if (clipboardClearPending) clearClipboardNow();
+    });
+
+    async function copyDecrypted(e) {
+      const text = document.getElementById('decrypted-text').textContent;
+      await navigator.clipboard.writeText(text);
+      e.target.textContent = '✓ Copied!';
+      setTimeout(() => e.target.textContent = 'Copy', 2000);
+      showToast(`✓ Copied. The clipboard will be cleared in ${CLIPBOARD_CLEAR_SECONDS} seconds.`);
+      announceStatus(`Decrypted note copied to clipboard. It will be cleared in ${CLIPBOARD_CLEAR_SECONDS} seconds.`);
+      scheduleClipboardClear();
+    }
+
+    async function copyEncrypted(e) {
+      const text = document.getElementById('encrypted-content').textContent;
+      await navigator.clipboard.writeText(text);
+      e.target.textContent = '✓ Copied!';
+      setTimeout(() => e.target.textContent = 'Copy', 2000);
+      showToast('✓ Encrypted content copied to clipboard');
+      announceStatus('Encrypted content copied to clipboard');
+    }
+
+    // ---- Showing and hiding the decrypted note ----
+    // Web pages cannot block screenshots or screen recording. Keeping the note
+    // blurred unless asked for limits what a screenshot, a screen share, the
+    // phone's app switcher preview or a passer-by can catch.
+    const REVEAL_SECONDS = 30;
+    let revealTimer = null;
+
+    function concealDecrypted(announce = true) {
+      const textEl = document.getElementById('decrypted-text');
+      const btn = document.getElementById('btn-reveal');
+      if (!textEl || !btn) return;
+      clearTimeout(revealTimer);
+      revealTimer = null;
+      const wasRevealed = !textEl.classList.contains('concealed');
+      textEl.classList.add('concealed');
+      btn.textContent = 'Show';
+      btn.setAttribute('aria-label', 'Show decrypted note');
+      btn.setAttribute('aria-pressed', 'false');
+      if (announce && wasRevealed) announceStatus('Decrypted note hidden');
+    }
+
+    function revealDecrypted() {
+      const textEl = document.getElementById('decrypted-text');
+      const btn = document.getElementById('btn-reveal');
+      textEl.classList.remove('concealed');
+      btn.textContent = 'Hide';
+      btn.setAttribute('aria-label', 'Hide decrypted note');
+      btn.setAttribute('aria-pressed', 'true');
+      clearTimeout(revealTimer);
+      revealTimer = setTimeout(() => concealDecrypted(), REVEAL_SECONDS * 1000);
+      announceStatus(`Decrypted note shown. It will be hidden again in ${REVEAL_SECONDS} seconds.`);
+    }
+
+    function toggleReveal() {
+      const textEl = document.getElementById('decrypted-text');
+      if (textEl.classList.contains('concealed')) {
+        revealDecrypted();
+      } else {
+        concealDecrypted();
+      }
+    }
+
+    // Hide as soon as the tab or app goes to the background
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        concealDecrypted(false);
+        forgetSavedNote();
+      }
+    });
+    window.addEventListener('pagehide', () => {
+      concealDecrypted(false);
+      forgetSavedNote();
+    });
+
+    // ---- Clear everything after a period of inactivity ----
+    const IDLE_CLEAR_MINUTES = 5;
+    let idleTimer = null;
+
+    function clearSensitiveData() {
+      forgetSavedNote();
+      concealDecrypted(false);
+      for (const id of ['note', 'password-encrypt', 'password-confirm', 'password-decrypt']) {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      }
+      const decrypted = document.getElementById('decrypted-text');
+      if (decrypted) decrypted.textContent = '';
+      const decryptResult = document.getElementById('decrypt-result');
+      if (decryptResult) decryptResult.classList.add('hidden');
+      updateCharCount();
+      // Back to a hidden password field, and ask for confirmation again
+      setVerifiedPasswordState();
+      passwordVerified = false;
+      updateStrength();
+      if (!document.getElementById('password-confirm')) {
+        const bar = document.getElementById('strength-bar');
+        const confirmDiv = document.createElement('div');
+        confirmDiv.id = 'confirm-field';
+        confirmDiv.innerHTML = `
+          <input type="password" id="password-confirm" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore placeholder="Confirm password" oninput="checkMatch()" style="margin-top: 0.5rem;" aria-describedby="password-match" onkeydown="if(event.key==='Enter'){encrypt();event.preventDefault();}">
+          <div class="password-match" id="password-match" aria-live="polite"></div>
+        `;
+        bar.parentElement.insertBefore(confirmDiv, bar);
+      }
+      showToast('Cleared after ' + IDLE_CLEAR_MINUTES + ' minutes without activity');
+      announceStatus('Passwords and notes were cleared after ' + IDLE_CLEAR_MINUTES + ' minutes without activity');
+    }
+
+    function resetIdleTimer() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(clearSensitiveData, IDLE_CLEAR_MINUTES * 60 * 1000);
+    }
+    for (const evt of ['keydown', 'pointerdown', 'input', 'focusin']) {
+      document.addEventListener(evt, resetIdleTimer, true);
+    }
+    resetIdleTimer();
+
+    function openUrl() {
+      const url = document.getElementById('generated-url').textContent;
+      window.open(url, '_blank');
+    }
+
+    // Register service worker for PWA
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {
+        // Service worker registration failed - app still works, just not offline
+      });
+    }
+  </script>
+</body>
+</html>
