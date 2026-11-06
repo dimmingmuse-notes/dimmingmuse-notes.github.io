@@ -3,8 +3,10 @@
 // picked up when this file changes. With every release, change CACHE_NAME
 // (encrypt-v5, encrypt-v6, ...). Browsers check this file each time the app is
 // opened; the new version is downloaded then and shown the next time it opens.
-const CACHE_NAME = 'encrypt-v5';
+const CACHE_NAME = 'encrypt-v7';
 const ASSETS = [
+  './',           // the site's main address, which forwards to encrypt.html
+  'index.html',
   'encrypt.html',
   'manifest.json',
   'icon-192.png',
