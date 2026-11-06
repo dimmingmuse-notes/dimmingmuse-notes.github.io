@@ -226,6 +226,8 @@
     .tag-table td.tag-code { font-family: ui-monospace, monospace; color: #c4b5fd; }
     .tag-all { margin-top: 0.75rem; }
     .tag-note { font-size: 0.75rem; color: #94a3b8; margin-top: 0.5rem; }
+    .tag-problem { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 0.75rem; color: #fca5a5; margin-top: 0.125rem; }
+    .tag-table td.tag-code { word-break: break-all; }
     .hidden { display: none; }
     .visually-hidden {
       position: absolute;
@@ -356,7 +358,7 @@
       </select>
     </div>
 
-    <div class="info-box" tabindex="0" role="note" aria-label="How it works: Uses PBKDF2-SHA512 with 600,000 iterations to derive a key from your password. Notes made with the original version, at 200,000 iterations, can still be decrypted. SHA-512 is harder for GPUs to crack than SHA-256. Encrypts with AES-256-GCM which includes integrity check. Pads notes to a multiple of 256 bytes so the encrypted length does not reveal the note's length. Stores a version byte, salt, IV, and ciphertext in URL-safe base64. Decrypted notes stay blurred until you choose to show them, and are hidden again after 30 seconds or when you switch away. The Tags tab turns tag words into private codes, using HMAC-SHA256 with a key derived by PBKDF2, so Pinboard can search them without knowing the words. If you choose a time above, passwords and notes are cleared from the page after that long without activity. Everything happens in your browser - nothing is ever sent anywhere.">
+    <div class="info-box" tabindex="0" role="note" aria-label="How it works: Uses PBKDF2-SHA512 with 600,000 iterations to derive a key from your password. Notes made with the original version, at 200,000 iterations, can still be decrypted. SHA-512 is harder for GPUs to crack than SHA-256. Encrypts with AES-256-GCM which includes integrity check. Pads notes to a multiple of 256 bytes so the encrypted length does not reveal the note's length. Stores a version byte, salt, IV, and ciphertext in URL-safe base64. Decrypted notes stay blurred until you choose to show them, and are hidden again after 30 seconds or when you switch away. The Tags tab turns tag words into private codes and back, using deterministic AES-CTR encryption with an HMAC-SHA256 check, so Pinboard can search them without knowing the words. If you choose a time above, passwords and notes are cleared from the page after that long without activity. Everything happens in your browser - nothing is ever sent anywhere.">
       <strong id="how-it-works-title" aria-hidden="true">How it works:</strong>
       <ul aria-hidden="true">
         <li>Uses PBKDF2-SHA512 (600k iterations) to derive a key from your password; notes from the original version (200k) still decrypt</li>
@@ -365,7 +367,7 @@
         <li>Pads notes to a multiple of 256 bytes so the encrypted length doesn't reveal the note's length</li>
         <li>Stores version + salt + IV + ciphertext in URL-safe base64</li>
         <li>Decrypted notes stay blurred until you show them, and hide again after 30 seconds or when you switch away</li>
-        <li>Tags tab: turns tag words into private codes (HMAC-SHA256 with a PBKDF2 key) so Pinboard can search them without knowing the words</li>
+        <li>Tags tab: turns tag words into private codes and back (deterministic AES-CTR + HMAC-SHA256, "SIV"), so Pinboard can search them without knowing the words</li>
         <li>Optionally clears passwords and notes after a period without activity (setting above)</li>
         <li>Everything happens in your browser - nothing is ever sent anywhere</li>
       </ul>
@@ -454,18 +456,18 @@
 
       // Tags panel
       document.getElementById('panel-tags').innerHTML = `
-        <p class="panel-intro">Turns tag words into codes that look random. The same word and password always give the same code, so you can tag and search Pinboard by code without Pinboard learning the word. Codes start with a period, which Pinboard treats as a private tag.</p>
+        <p class="panel-intro">Turns tag words into codes that look random, and codes back into words. The same word and password always give the same code, so you can tag and search Pinboard by code without Pinboard learning the word. Codes start with a period, which Pinboard treats as a private tag.</p>
         <div class="field">
-          <label for="tag-words">Tag words</label>
+          <label for="tag-words">Tag words or codes</label>
           <input type="text" id="tag-words" autocomplete="off" spellcheck="false" placeholder="e.g. claude, billing" aria-describedby="tag-words-hint" onkeydown="if(event.key==='Enter'){makeTagCodes();event.preventDefault();}">
-          <div class="field-hint" id="tag-words-hint">Separate words with commas or spaces. Capital letters don't matter.</div>
+          <div class="field-hint" id="tag-words-hint">Type words to get their codes, or paste codes (for example from Pinboard) to see their words. Separate with commas or spaces. Capital letters don't matter.</div>
         </div>
         <div class="field">
           <label for="password-tags">Password</label>
-          <input type="password" id="password-tags" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore placeholder="Use the same password every time" aria-describedby="password-tags-hint" onkeydown="if(event.key==='Enter'){makeTagCodes();event.preventDefault();}">
-          <div class="field-hint" id="password-tags-hint">A different password gives different codes, so always use the same one, e.g. your notes password.</div>
+          <input type="password" id="password-tags" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore placeholder="Use the same password every time" aria-describedby="password-tags-hint" oninput="tagsPasswordAutoFilled = false" onkeydown="if(event.key==='Enter'){makeTagCodes();event.preventDefault();}">
+          <div class="field-hint" id="password-tags-hint">Filled in automatically after you encrypt or decrypt a note. A different password gives different codes, so always use the same one.</div>
         </div>
-        <button class="primary tags" id="btn-tags" onclick="makeTagCodes()">Make Tag Codes</button>
+        <button class="primary tags" id="btn-tags" onclick="makeTagCodes()">Convert</button>
         <div class="result hidden" id="tags-result" tabindex="0" role="region" aria-labelledby="tags-result-title">
           <div class="result-header">
             <span class="result-title" id="tags-result-title">Tag codes:</span>
@@ -528,6 +530,7 @@
         subtitle.textContent = 'Decrypt an encrypted note with the password. Everything happens in your browser - nothing is ever sent anywhere.';
         if (announce) announceStatus('Switched to decrypt mode');
       } else if (tab === 'tags') {
+        fillTagsPassword();
         document.title = 'Note Encryption Tool - Tags';
         title.innerHTML = '<span aria-hidden="true">🔐 </span>Note Encryption Tool - Tags';
         subtitle.textContent = 'Make private tag codes for searching Pinboard. Everything happens in your browser - nothing is ever sent anywhere.';
@@ -1006,6 +1009,7 @@
         
         // Convert to verified password state (single hidden field)
         setVerifiedPasswordState();
+        rememberSessionPassword(password);
         
         // Show restore button
         document.getElementById('btn-restore').classList.remove('hidden');
@@ -1052,7 +1056,9 @@
         concealDecrypted(false);
         document.getElementById('decrypted-text').textContent = new TextDecoder().decode(plaintext);
         document.getElementById('decrypt-result').classList.remove('hidden');
-        // Don't leave the password sitting in the field
+        // Don't leave the password sitting in the field; keep it in memory
+        // only, so the Tags tab can use it
+        rememberSessionPassword(password);
         document.getElementById('password-decrypt').value = '';
         
         // Move focus to result panel for screen readers
@@ -1134,109 +1140,205 @@
     }
 
     // ---- Tag codes ----
-    // code = "." + first 12 base32 letters of HMAC-SHA256(tagKey, "tag:" + word)
-    // tagKey = PBKDF2-SHA512(password, fixed salt, 600,000 iterations)
-    // The salt is fixed (not random) on purpose: the same word and password must
-    // always give the same code, or searching would not work. The slow key
-    // derivation means codes can't be used to guess your password faster than
-    // the notes can. NEVER change these constants: every existing code would
-    // stop matching. A new scheme would need a new salt ("v2") and re-tagging.
-    // What Pinboard can still see: which bookmarks share a code, and how many
-    // bookmarks use each code - but not which word a code stands for.
-    const TAG_SALT = new TextEncoder().encode('encrypted-note-url/tag-codes/v1');
+    // A tag code is the tag word encrypted deterministically: the same word and
+    // password always give the same code (so Pinboard can search by it), and
+    // the code can be turned back into the word with the password.
+    //
+    //   keys     = PBKDF2-SHA512(password, fixed salt, 600,000 iterations) -> 64 bytes,
+    //              first 32 = HMAC-SHA256 key, last 32 = AES-256-CTR key
+    //   padded   = word length (1 byte) | word (UTF-8) | zeros, to a multiple of 8 bytes
+    //   check    = first 8 bytes of HMAC-SHA256(macKey, "tag:" | padded)
+    //   code     = "." + base32(check | AES-CTR(encKey, counter = check | zeros, padded))
+    //
+    // This is the "SIV" construction: the check value doubles as the IV, so
+    // equal words give equal codes, and decoding verifies the check value, so
+    // a wrong password or a mistyped code is detected instead of giving junk.
+    // The salt is fixed on purpose (codes must repeat). NEVER change these
+    // constants: every existing code would stop matching and decoding.
+    // What Pinboard can still see: which bookmarks share a code, how many
+    // bookmarks use each code, and roughly how long the word is (in 8-byte steps).
+    const TAG_SALT = new TextEncoder().encode('encrypted-note-url/tag-codes/v2');
     const TAG_ITERATIONS = 600000;
-    const TAG_CODE_LETTERS = 12; // 60 bits: accidental clashes are practically impossible
+    const TAG_CHECK_BYTES = 8;
+    const TAG_PAD_BLOCK = 8;
+    const TAG_MAX_WORD_BYTES = 120;
     const BASE32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';
+    const NEW_CODE_RE = /^\.[a-z2-7]{26,}$/;
+    const OLD_CODE_RE = /^\.[a-z2-7]{12}$/; // short one-way codes from the first Tags version
     const PINBOARD_MAX_TAGS = 3; // Pinboard tag pages combine at most 3 tags
     const PINBOARD_USER_KEY = 'encrypt-note:pinboard-user';
     let lastTagCodes = [];
 
-    async function deriveTagKey(password) {
+    async function deriveTagKeys(password) {
       const material = await crypto.subtle.importKey(
-        'raw', new TextEncoder().encode(password.normalize('NFC')), 'PBKDF2', false, ['deriveKey']);
-      return crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt: TAG_SALT, iterations: TAG_ITERATIONS, hash: 'SHA-512' },
-        material,
-        { name: 'HMAC', hash: 'SHA-256', length: 256 },
-        false,
-        ['sign']);
+        'raw', new TextEncoder().encode(password.normalize('NFC')), 'PBKDF2', false, ['deriveBits']);
+      const bits = new Uint8Array(await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', salt: TAG_SALT, iterations: TAG_ITERATIONS, hash: 'SHA-512' }, material, 512));
+      const macKey = await crypto.subtle.importKey('raw', bits.slice(0, 32), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const encKey = await crypto.subtle.importKey('raw', bits.slice(32, 64), { name: 'AES-CTR' }, false, ['encrypt', 'decrypt']);
+      bits.fill(0);
+      return { macKey, encKey };
     }
 
     function normalizeTagWord(word) {
       return word.normalize('NFC').trim().toLowerCase();
     }
 
-    function splitTagWords(text) {
-      return [...new Set(text.split(/[\s,]+/).map(normalizeTagWord).filter(Boolean))];
+    function splitTagInput(text) {
+      return [...new Set(text.split(/[\s,]+/).map(t => t.trim()).filter(Boolean))];
     }
 
-    function toBase32(bytes, letters) {
+    function base32Encode(bytes) {
       let out = '', buffer = 0, bits = 0;
       for (const byte of bytes) {
-        buffer = (buffer << 8) | byte;
+        buffer = ((buffer << 8) | byte) & 0xffff;
         bits += 8;
-        while (bits >= 5 && out.length < letters) {
+        while (bits >= 5) {
           out += BASE32_ALPHABET[(buffer >>> (bits - 5)) & 31];
           bits -= 5;
         }
-        buffer &= (1 << bits) - 1;
-        if (out.length >= letters) break;
       }
+      if (bits > 0) out += BASE32_ALPHABET[(buffer << (5 - bits)) & 31];
       return out;
     }
 
-    async function tagCodeFor(tagKey, word) {
-      const mac = await crypto.subtle.sign('HMAC', tagKey, new TextEncoder().encode('tag:' + normalizeTagWord(word)));
-      return '.' + toBase32(new Uint8Array(mac), TAG_CODE_LETTERS);
+    function base32Decode(text) {
+      const bytes = [];
+      let buffer = 0, bits = 0;
+      for (const ch of text) {
+        const v = BASE32_ALPHABET.indexOf(ch);
+        if (v < 0) throw new Error('Not a tag code');
+        buffer = ((buffer << 5) | v) & 0xffff;
+        bits += 5;
+        if (bits >= 8) {
+          bytes.push((buffer >>> (bits - 8)) & 0xff);
+          bits -= 8;
+        }
+      }
+      return new Uint8Array(bytes);
+    }
+
+    async function tagCheckValue(macKey, padded) {
+      const input = new Uint8Array(4 + padded.length);
+      input.set(new TextEncoder().encode('tag:'));
+      input.set(padded, 4);
+      return new Uint8Array(await crypto.subtle.sign('HMAC', macKey, input)).slice(0, TAG_CHECK_BYTES);
+    }
+
+    function tagCounter(check) {
+      const counter = new Uint8Array(16);
+      counter.set(check);
+      return counter;
+    }
+
+    async function encodeTagWord(keys, word) {
+      const wordBytes = new TextEncoder().encode(normalizeTagWord(word));
+      if (wordBytes.length > TAG_MAX_WORD_BYTES) throw new Error('Tag word too long');
+      const padded = new Uint8Array(Math.ceil((1 + wordBytes.length) / TAG_PAD_BLOCK) * TAG_PAD_BLOCK);
+      padded[0] = wordBytes.length;
+      padded.set(wordBytes, 1);
+      const check = await tagCheckValue(keys.macKey, padded);
+      const ct = new Uint8Array(await crypto.subtle.encrypt(
+        { name: 'AES-CTR', counter: tagCounter(check), length: 64 }, keys.encKey, padded));
+      const all = new Uint8Array(check.length + ct.length);
+      all.set(check);
+      all.set(ct, check.length);
+      return '.' + base32Encode(all);
+    }
+
+    // Returns the word, or null if the code wasn't made with this password
+    async function decodeTagCode(keys, code) {
+      let all;
+      try {
+        all = base32Decode(code.slice(1).toLowerCase());
+      } catch (e) {
+        return null;
+      }
+      if (all.length < TAG_CHECK_BYTES + TAG_PAD_BLOCK || (all.length - TAG_CHECK_BYTES) % TAG_PAD_BLOCK) return null;
+      const check = all.slice(0, TAG_CHECK_BYTES);
+      const padded = new Uint8Array(await crypto.subtle.decrypt(
+        { name: 'AES-CTR', counter: tagCounter(check), length: 64 }, keys.encKey, all.slice(TAG_CHECK_BYTES)));
+      const expected = await tagCheckValue(keys.macKey, padded);
+      if (!expected.every((b, i) => b === check[i])) return null;
+      const len = padded[0];
+      if (len > padded.length - 1) return null;
+      return new TextDecoder().decode(padded.slice(1, 1 + len));
     }
 
     async function makeTagCodes() {
-      const words = splitTagWords(document.getElementById('tag-words').value);
+      const items = splitTagInput(document.getElementById('tag-words').value);
       const password = document.getElementById('password-tags').value;
       hideError();
       document.getElementById('tags-result').classList.add('hidden');
-      if (!words.length || !password) {
-        showError('Please enter at least one tag word and the password', null, true);
-        document.getElementById(words.length ? 'password-tags' : 'tag-words').focus();
+      if (!items.length || !password) {
+        showError('Please enter at least one tag word or code, and the password', null, true);
+        document.getElementById(items.length ? 'password-tags' : 'tag-words').focus();
         return;
       }
       const btn = document.getElementById('btn-tags');
       btn.disabled = true;
-      btn.textContent = 'Making codes...';
+      btn.textContent = 'Working...';
       try {
-        const tagKey = await deriveTagKey(password);
-        const rows = [];
-        lastTagCodes = [];
-        for (const word of words) {
-          const code = await tagCodeFor(tagKey, word);
-          lastTagCodes.push(code);
-          rows.push([word, code]);
+        const keys = await deriveTagKeys(password);
+        const rows = []; // [word, code, problem]
+        const seenCodes = new Set();
+        let problems = 0, oldCodes = 0;
+        for (const item of items) {
+          let word, code, problem = '';
+          if (NEW_CODE_RE.test(item.toLowerCase())) {
+            code = item.toLowerCase();
+            word = await decodeTagCode(keys, code);
+            if (word === null) {
+              problem = "Can't be read with this password";
+              problems++;
+            }
+          } else if (OLD_CODE_RE.test(item.toLowerCase())) {
+            code = item.toLowerCase();
+            word = null;
+            problem = 'Older one-way code: make a new code for this word and re-tag';
+            oldCodes++;
+          } else {
+            word = normalizeTagWord(item);
+            code = await encodeTagWord(keys, word);
+          }
+          if (seenCodes.has(code)) continue;
+          seenCodes.add(code);
+          rows.push([word, code, problem]);
         }
+        lastTagCodes = rows.filter(r => !r[2]).map(r => r[1]);
         const tbody = document.getElementById('tag-rows');
         tbody.textContent = '';
-        for (const [word, code] of rows) {
+        for (const [word, code, problem] of rows) {
           const tr = document.createElement('tr');
           const wordCell = document.createElement('td');
-          wordCell.textContent = word;
+          wordCell.textContent = word === null ? '—' : word;
           const codeCell = document.createElement('td');
           codeCell.className = 'tag-code';
           codeCell.textContent = code;
           tr.append(wordCell, codeCell);
+          if (problem) {
+            const note = document.createElement('div');
+            note.className = 'tag-problem';
+            note.textContent = problem;
+            codeCell.append(note);
+          }
           tbody.append(tr);
         }
         const note = document.getElementById('tag-note');
         note.textContent = 'Paste the codes into the bookmark\'s tags field in Pinboard (they are separated by spaces). '
           + (lastTagCodes.length > PINBOARD_MAX_TAGS
             ? `Search Pinboard uses the first ${PINBOARD_MAX_TAGS} codes, the most Pinboard can combine.`
-            : 'Search Pinboard shows bookmarks that have all of these codes.');
+            : 'Search Pinboard shows bookmarks that have all of these codes.')
+          + (problems ? ' Codes that can\'t be read were made with a different password, or are mistyped.' : '');
         document.getElementById('tags-result').classList.remove('hidden');
         document.getElementById('tags-result').focus();
-        announceStatus(`${rows.length} tag code${rows.length === 1 ? '' : 's'} ready`);
+        announceStatus(`${rows.length} tag${rows.length === 1 ? '' : 's'} ready`
+          + (problems + oldCodes ? `, ${problems + oldCodes} could not be read` : ''));
       } catch (e) {
-        showError('Could not make tag codes: ' + e.message);
+        showError('Could not convert tags: ' + e.message);
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Make Tag Codes';
+        btn.textContent = 'Convert';
       }
     }
 
@@ -1280,6 +1382,27 @@
       // Opens Pinboard's own page for these tags. Only the codes are in the
       // address, never the words or your password.
       window.open(pinboardTagUrl(user, lastTagCodes), '_blank', 'noopener');
+    }
+
+    // ---- Carrying the password over to the Tags tab ----
+    // After a successful encrypt or decrypt, the password is kept in this
+    // page's memory (not stored anywhere) and filled into the Tags tab, so you
+    // don't have to type it again. It is forgotten when the page is closed,
+    // or by the inactivity setting.
+    let sessionPassword = '';
+    let tagsPasswordAutoFilled = false;
+
+    function rememberSessionPassword(password) {
+      sessionPassword = password;
+    }
+
+    function fillTagsPassword() {
+      const field = document.getElementById('password-tags');
+      if (!field || !sessionPassword) return;
+      if (!field.value || tagsPasswordAutoFilled) {
+        field.value = sessionPassword;
+        tagsPasswordAutoFilled = true;
+      }
     }
 
     // ---- Showing and hiding the decrypted note ----
@@ -1381,6 +1504,8 @@
         if (el) el.value = '';
       }
       lastTagCodes = [];
+      sessionPassword = '';
+      tagsPasswordAutoFilled = false;
       const tagRows = document.getElementById('tag-rows');
       if (tagRows) tagRows.textContent = '';
       const tagsResult = document.getElementById('tags-result');
