@@ -18,6 +18,7 @@
   <meta name="apple-mobile-web-app-title" content="Encrypt Note">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="icon" type="image/png" href="icon-192.png">
   
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -194,6 +195,27 @@
     .info-box strong { display: block; margin-bottom: 0.5rem; }
     .info-box ul { margin-left: 1rem; }
     .info-box li { margin-bottom: 0.25rem; }
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 2rem;
+      font-size: 0.875rem;
+      color: #cbd5e1;
+    }
+    .setting-row label { display: inline; margin: 0; font-size: 0.875rem; }
+    .setting-row select {
+      padding: 0.375rem 0.5rem;
+      background: #1e293b;
+      border: 1px solid #475569;
+      border-radius: 0.5rem;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+      font-family: inherit;
+    }
+    .setting-row select:focus { outline: 2px solid #10b981; outline-offset: 2px; border-color: #10b981; }
+    .setting-row + .info-box { margin-top: 1rem; }
     .hidden { display: none; }
     .visually-hidden {
       position: absolute;
@@ -308,7 +330,19 @@
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
     <div id="status-announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
 
-    <div class="info-box" tabindex="0" role="note" aria-label="How it works: Uses PBKDF2-SHA512 with 600,000 iterations to derive a key from your password. Notes made with the original version, at 200,000 iterations, can still be decrypted. SHA-512 is harder for GPUs to crack than SHA-256. Encrypts with AES-256-GCM which includes integrity check. Pads notes to a multiple of 256 bytes so the encrypted length does not reveal the note's length. Stores a version byte, salt, IV, and ciphertext in URL-safe base64. Decrypted notes stay blurred until you choose to show them, and are hidden again after 30 seconds or when you switch away. After 5 minutes without activity, passwords and notes are cleared from the page. Everything happens in your browser - nothing is ever sent anywhere.">
+    <div class="setting-row">
+      <label for="idle-clear-select">Clear passwords and notes after no activity for:</label>
+      <select id="idle-clear-select" onchange="changeIdleClearSetting(this.value)">
+        <option value="0">Never</option>
+        <option value="1">1 minute</option>
+        <option value="5">5 minutes</option>
+        <option value="15">15 minutes</option>
+        <option value="30">30 minutes</option>
+        <option value="60">1 hour</option>
+      </select>
+    </div>
+
+    <div class="info-box" tabindex="0" role="note" aria-label="How it works: Uses PBKDF2-SHA512 with 600,000 iterations to derive a key from your password. Notes made with the original version, at 200,000 iterations, can still be decrypted. SHA-512 is harder for GPUs to crack than SHA-256. Encrypts with AES-256-GCM which includes integrity check. Pads notes to a multiple of 256 bytes so the encrypted length does not reveal the note's length. Stores a version byte, salt, IV, and ciphertext in URL-safe base64. Decrypted notes stay blurred until you choose to show them, and are hidden again after 30 seconds or when you switch away. If you choose a time above, passwords and notes are cleared from the page after that long without activity. Everything happens in your browser - nothing is ever sent anywhere.">
       <strong id="how-it-works-title" aria-hidden="true">How it works:</strong>
       <ul aria-hidden="true">
         <li>Uses PBKDF2-SHA512 (600k iterations) to derive a key from your password; notes from the original version (200k) still decrypt</li>
@@ -317,7 +351,7 @@
         <li>Pads notes to a multiple of 256 bytes so the encrypted length doesn't reveal the note's length</li>
         <li>Stores version + salt + IV + ciphertext in URL-safe base64</li>
         <li>Decrypted notes stay blurred until you show them, and hide again after 30 seconds or when you switch away</li>
-        <li>After 5 minutes without activity, passwords and notes are cleared from the page</li>
+        <li>Optionally clears passwords and notes after a period without activity (setting above)</li>
         <li>Everything happens in your browser - nothing is ever sent anywhere</li>
       </ul>
     </div>
@@ -407,6 +441,7 @@
     // Initialize on load, then check for hash
     window.addEventListener('DOMContentLoaded', () => {
       initForms();
+      document.getElementById('idle-clear-select').value = String(idleClearMinutes);
       
       const hash = window.location.hash.slice(1);
       // Only treat as encrypted data if it looks like base64 (not element IDs like "page-title")
@@ -1098,8 +1133,41 @@
     });
 
     // ---- Clear everything after a period of inactivity ----
-    const IDLE_CLEAR_MINUTES = 5;
+    // The time is chosen in the page and remembered in this browser.
+    // 0 means never. Default: never.
+    const IDLE_CLEAR_STORAGE_KEY = 'encrypt-note:idle-clear-minutes';
+    const IDLE_CLEAR_CHOICES = [0, 1, 5, 15, 30, 60];
+    let idleClearMinutes = loadIdleClearSetting();
     let idleTimer = null;
+
+    function loadIdleClearSetting() {
+      try {
+        const saved = parseInt(localStorage.getItem(IDLE_CLEAR_STORAGE_KEY), 10);
+        if (IDLE_CLEAR_CHOICES.includes(saved)) return saved;
+      } catch (e) {
+        // Storage can be unavailable (some private modes, strict settings): use the default
+      }
+      return 0;
+    }
+
+    function describeMinutes(minutes) {
+      if (minutes === 60) return '1 hour';
+      return minutes === 1 ? '1 minute' : minutes + ' minutes';
+    }
+
+    function changeIdleClearSetting(value) {
+      const minutes = parseInt(value, 10);
+      idleClearMinutes = IDLE_CLEAR_CHOICES.includes(minutes) ? minutes : 0;
+      try {
+        localStorage.setItem(IDLE_CLEAR_STORAGE_KEY, String(idleClearMinutes));
+      } catch (e) {
+        // Not saved, but still applies until the page is closed
+      }
+      resetIdleTimer();
+      announceStatus(idleClearMinutes === 0
+        ? 'Passwords and notes will not be cleared automatically'
+        : 'Passwords and notes will be cleared after ' + describeMinutes(idleClearMinutes) + ' without activity');
+    }
 
     function clearSensitiveData() {
       forgetSavedNote();
@@ -1127,13 +1195,16 @@
         `;
         bar.parentElement.insertBefore(confirmDiv, bar);
       }
-      showToast('Cleared after ' + IDLE_CLEAR_MINUTES + ' minutes without activity');
-      announceStatus('Passwords and notes were cleared after ' + IDLE_CLEAR_MINUTES + ' minutes without activity');
+      showToast('Cleared after ' + describeMinutes(idleClearMinutes) + ' without activity');
+      announceStatus('Passwords and notes were cleared after ' + describeMinutes(idleClearMinutes) + ' without activity');
     }
 
     function resetIdleTimer() {
       clearTimeout(idleTimer);
-      idleTimer = setTimeout(clearSensitiveData, IDLE_CLEAR_MINUTES * 60 * 1000);
+      idleTimer = null;
+      if (idleClearMinutes > 0) {
+        idleTimer = setTimeout(clearSensitiveData, idleClearMinutes * 60 * 1000);
+      }
     }
     for (const evt of ['keydown', 'pointerdown', 'input', 'focusin']) {
       document.addEventListener(evt, resetIdleTimer, true);

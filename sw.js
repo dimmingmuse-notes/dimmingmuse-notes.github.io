@@ -1,5 +1,5 @@
 // Change this name with every release, or devices keep the old cached page forever
-const CACHE_NAME = 'encrypt-v2';
+const CACHE_NAME = 'encrypt-v4';
 const ASSETS = [
   'encrypt.html',
   'manifest.json',
