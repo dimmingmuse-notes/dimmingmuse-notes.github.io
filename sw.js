@@ -1,5 +1,9 @@
-// Change this name with every release, or devices keep the old cached page forever
-const CACHE_NAME = 'encrypt-v4';
+// HOW UPDATES REACH INSTALLED COPIES
+// Pages are always served from this cache, so a changed encrypt.html is only
+// picked up when this file changes. With every release, change CACHE_NAME
+// (encrypt-v5, encrypt-v6, ...). Browsers check this file each time the app is
+// opened; the new version is downloaded then and shown the next time it opens.
+const CACHE_NAME = 'encrypt-v5';
 const ASSETS = [
   'encrypt.html',
   'manifest.json',
@@ -7,10 +11,14 @@ const ASSETS = [
   'icon-512.png'
 ];
 
-// Install - cache assets
+// Install - cache assets. cache: 'reload' fetches straight from the server:
+// otherwise the browser's own HTTP cache (GitHub Pages allows 10 minutes)
+// could hand back the previous version of a file.
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then(cache =>
+      cache.addAll(ASSETS.map(url => new Request(url, { cache: 'reload' })))
+    )
   );
   self.skipWaiting();
 });
