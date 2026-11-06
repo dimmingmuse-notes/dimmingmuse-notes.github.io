@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>Note Encryption Tool</title>
+  <!-- Sends visitors of the site's main address to the tool. The part after #
+       (encrypted text) is kept, so links like /#... open ready to decrypt.
+       location.replace keeps this page out of the back-button history. -->
+  <script>location.replace('encrypt.html' + location.hash);</script>
+  <style>
+    body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 1.5rem; }
+    a { color: #34d399; }
+  </style>
+</head>
+<body>
+  <p>Opening the <a href="encrypt.html">Note Encryption Tool</a>…</p>
+</body>
+</html>
